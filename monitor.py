@@ -20,6 +20,7 @@ import re
 import sys
 import time
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -89,13 +90,29 @@ def nueva_sesion():
         "password": os.environ["MQ_PASSWORD"],
     })
     r.raise_for_status()
-    if r.url.rstrip("/").endswith("/login"):
-        raise ErrorSitio("el login falló: revisá MQ_EMAIL y MQ_PASSWORD en los secrets de GitHub")
-    r = s.get(PUENTE_URL, timeout=30)  # pasa la sesión de Mi Quilmes al sistema de turnos
-    r.raise_for_status()
-    if "arquivirtual.quilmes.gov.ar" not in r.url:
-        raise ErrorSitio("no pude pasar de Mi Quilmes al sistema de turnos")
-    return s
+    if r.url.rstrip("/").endswith("/login") or 'name="password"' in r.text:
+        raise ErrorSitio("el login falló: revisá MQ_EMAIL y MQ_PASSWORD en los secrets de GitHub. "
+                         + describir(r))
+    for intento in range(3):  # pasa la sesión de Mi Quilmes al sistema de turnos
+        r = s.get(PUENTE_URL, timeout=30)
+        r.raise_for_status()
+        if "arquivirtual.quilmes.gov.ar" in r.url:
+            return s
+        log(f"Intento {intento + 1}: no pasé al sistema de turnos. {describir(r)}")
+        time.sleep(10)
+    raise ErrorSitio("no pude pasar de Mi Quilmes al sistema de turnos. " + describir(r))
+
+
+def describir(r):
+    """Resumen de dónde terminó una respuesta, sin datos personales, para diagnosticar."""
+    cadena = " → ".join(urlparse(h.url).netloc + urlparse(h.url).path for h in r.history)
+    final = urlparse(r.url).netloc + urlparse(r.url).path
+    soup = BeautifulSoup(r.text, "html.parser")
+    titulo = soup.title.get_text(" ", strip=True) if soup.title else ""
+    aviso = soup.select_one(".alert, .error, .invalid-feedback, .help-block, .swal2-content")
+    aviso = aviso.get_text(" ", strip=True)[:150] if aviso else ""
+    return (f"[Recorrido: {cadena + ' → ' if cadena else ''}{final} ({r.status_code}). "
+            f"Título: '{titulo}'. Aviso: '{aviso}']")
 
 
 def leer_calendario(html):
