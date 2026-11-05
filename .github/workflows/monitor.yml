@@ -1,0 +1,61 @@
+name: Monitor turnos licencia
+
+on:
+  schedule:
+    # Horarios en UTC (Argentina = UTC-3)
+    - cron: "25 12 * * *"                  # 9:25 AR: revisa cada 2 min hasta las 10:50
+    - cron: "*/10 0,10-12,14-23 * * *"     # cada 10 min de 7:00 a 21:50 AR (salvo la ventana de las 10)
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Qué hacer"
+        type: choice
+        options: [revisar, probar-telegram]
+        default: revisar
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Revisar turnos
+        env:
+          MQ_EMAIL: ${{ secrets.MQ_EMAIL }}
+          MQ_PASSWORD: ${{ secrets.MQ_PASSWORD }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ inputs.modo }}" = "probar-telegram" ]; then
+            python monitor.py --probar-telegram
+          elif [ "${{ github.event.schedule }}" = "25 12 * * *" ]; then
+            python monitor.py --hasta 10:50
+          else
+            python monitor.py
+          fi
+
+      - name: Guardar historial
+        if: always()
+        run: |
+          git config user.name "monitor-turnos"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A estado.json historial.csv 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Historial de turnos"
+            git pull --rebase && git push
+          fi
