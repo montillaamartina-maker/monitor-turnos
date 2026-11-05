@@ -8,6 +8,7 @@ Uso:
   python monitor.py                  -> una revisión
   python monitor.py --hasta 10:50    -> revisa en bucle (cada INTERVALO_SEG) hasta esa hora
   python monitor.py --probar-telegram
+  python monitor.py --reporte-diario -> revisa y manda el reporte de control (espera a las 00:00)
 
 Variables de entorno: MQ_EMAIL, MQ_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 Opcionales: INTERVALO_SEG (120), MESES_ADELANTE (1)
@@ -234,9 +235,38 @@ def procesar(estado, fechas, error):
     log(f"Turnos disponibles: {fmt(fechas)}")
 
 
+def reporte_diario():
+    """Espera hasta las 00:00 (si arrancó antes), hace una revisión y manda el reporte."""
+    t = ahora()
+    if t.hour == 23:  # GitHub lo lanza 23:45 para compensar sus atrasos
+        medianoche = (t + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        espera = (medianoche - t).total_seconds()
+        log(f"Esperando {int(espera)} s hasta las 00:00")
+        time.sleep(espera)
+    estado = cargar_estado()
+    s, fechas, error = una_revision(None)
+    procesar(estado, fechas, error)  # si hay turnos nuevos, el aviso urgente sale igual
+    guardar_estado(estado)
+    hora = ahora().strftime("%H:%M")
+    if error:
+        texto = ("🟠 Reporte diario: el monitor está activo, pero en la revisión de las "
+                 f"{hora} no pudo leer la página: {error}. Sigue intentando.")
+    elif fechas:
+        texto = ("🟢 Reporte diario: el monitor sigue activo y funcionando. "
+                 f"En la última revisión ({hora}) HAY turnos disponibles: {fmt(fechas)}.")
+    else:
+        texto = ("🟢 Reporte diario: el monitor sigue activo y funcionando. "
+                 f"En la última revisión ({hora}) no se encontraron turnos disponibles.")
+    telegram(texto)
+    log("Reporte diario enviado")
+
+
 def main():
     if "--probar-telegram" in sys.argv:
         telegram("✅ Prueba: el monitor de turnos puede enviarte mensajes.")
+        return
+    if "--reporte-diario" in sys.argv:
+        reporte_diario()
         return
     hasta = None
     if "--hasta" in sys.argv:
