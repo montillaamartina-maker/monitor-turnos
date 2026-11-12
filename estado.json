@@ -1,8 +1,6 @@
 {
-  "fechas": [
-    "2026-11-12"
-  ],
+  "fechas": [],
   "errores_seguidos": 0,
   "error_avisado": false,
-  "ultimo_dia": "2026-11-11"
+  "ultimo_dia": "2026-11-12"
 }
