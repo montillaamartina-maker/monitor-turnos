@@ -2,7 +2,7 @@
   "fechas": [
     "2026-11-28"
   ],
-  "errores_seguidos": 7,
-  "error_avisado": true,
+  "errores_seguidos": 0,
+  "error_avisado": false,
   "ultimo_dia": "2026-11-26"
 }
